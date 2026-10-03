@@ -6,27 +6,28 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import * as THREE from 'three';
 import gsap from 'gsap';
 
-// ========== RENDERIZADOR Y ESCENA ==========
+const CRISTAL_PROYECTA_SOMBRA = false;
+
 const canvas = document.getElementById('lienzo');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-// Habilitar sombras proyectadas en el renderizador
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x111216);
 
-// Mapa de entorno procedural para reflejos fotorrealistas en el vidrio
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.35;
 
 const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 500);
 camera.position.set(0, 1.2, 7.5);
 
-// ========== CÁMARA CON BLOQUEO EN Y ==========
 const controles = new OrbitControls(camera, renderer.domElement);
 controles.enableDamping = true;
 controles.target.set(0, 0.5, 0);
@@ -36,114 +37,154 @@ controles.addEventListener('change', () => {
 });
 controles.update();
 
-// ========== ILUMINACIÓN Y SOMBRAS ==========
-scene.add(new THREE.AmbientLight(0xffffff, 0.8)); // Luz ambiente
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2a2e, 0.5));
 
-const luz = new THREE.PointLight(0x00129b, 2.5, 20); // Luz azul Adidas
-luz.position.set(-2, 2, 2);
-luz.castShadow = true; // Emitir sombras
-luz.shadow.mapSize.width = 1024;
-luz.shadow.mapSize.height = 1024;
-luz.shadow.bias = -0.001;
-scene.add(luz);
+const luzSol = new THREE.DirectionalLight(0xfff1dd, 2.5);
+luzSol.position.set(4, 3.5, 8);
+luzSol.target.position.set(0, -0.5, 0);
+scene.add(luzSol.target);
+luzSol.castShadow = true;
+luzSol.shadow.mapSize.set(2048, 2048);
+luzSol.shadow.camera.near = 1;
+luzSol.shadow.camera.far = 25;
+luzSol.shadow.camera.left = -7;
+luzSol.shadow.camera.right = 7;
+luzSol.shadow.camera.top = 7;
+luzSol.shadow.camera.bottom = -7;
+luzSol.shadow.bias = -0.0004;
+luzSol.shadow.normalBias = 0.02;
+scene.add(luzSol);
 
-// ========== TEXTURAS Y MATERIALES ==========
-// Textura concreto procedural
-const canvasConcreto = document.createElement('canvas');
-canvasConcreto.width = canvasConcreto.height = 256;
-const ctx = canvasConcreto.getContext('2d');
-ctx.fillStyle = '#2b2c30';
-ctx.fillRect(0, 0, 256, 256);
-for (let i = 0; i < 4000; i++) {
-  const x = Math.random() * 256, y = Math.random() * 256;
-  ctx.fillStyle = `rgba(${Math.random() * 50},${Math.random() * 50},${Math.random() * 50},0.12)`;
-  ctx.fillRect(x, y, 2, 2);
+const luzFoco = new THREE.SpotLight(0xffffff, 28, 12, Math.PI / 6, 0.5, 2);
+luzFoco.position.set(0.8, 2.3, 1.2);
+luzFoco.target.position.set(0.8, -0.6, -0.1);
+scene.add(luzFoco.target);
+luzFoco.castShadow = true;
+luzFoco.shadow.mapSize.set(2048, 2048);
+luzFoco.shadow.camera.near = 0.5;
+luzFoco.shadow.camera.far = 8;
+luzFoco.shadow.bias = -0.0003;
+luzFoco.shadow.normalBias = 0.02;
+scene.add(luzFoco);
+
+const luzPuntual = new THREE.PointLight(0x2f56ff, 20, 15, 2);
+luzPuntual.position.set(-2, 1.5, 1.5);
+luzPuntual.castShadow = true;
+luzPuntual.shadow.mapSize.set(1024, 1024);
+luzPuntual.shadow.camera.near = 0.3;
+luzPuntual.shadow.camera.far = 15;
+luzPuntual.shadow.bias = -0.001;
+luzPuntual.shadow.normalBias = 0.02;
+scene.add(luzPuntual);
+
+const textureLoader = new THREE.TextureLoader();
+
+function configurarTexturaConcreto(tex) {
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 3);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tex.needsUpdate = true;
+  return tex;
 }
-const texturaConcreto = new THREE.CanvasTexture(canvasConcreto);
-texturaConcreto.wrapS = texturaConcreto.wrapT = THREE.RepeatWrapping;
-texturaConcreto.repeat.set(4, 4);
 
-// Implementación de los 5 materiales de la rúbrica
-const matStandard = new THREE.MeshStandardMaterial({ map: texturaConcreto, roughness: 0.85 });
+const texturaConcreto = configurarTexturaConcreto(
+  textureLoader.load('/textures/concrete_floor_worn_001_diff_4k.jpg')
+);
+
+const matStandardPiso = new THREE.MeshStandardMaterial({
+  map: texturaConcreto,
+  color: 0xffffff,
+  roughness: 0.9,
+  metalness: 0.0
+});
 const matMetalNegro = new THREE.MeshStandardMaterial({ color: 0x181a1d, roughness: 0.4, metalness: 0.8 });
 
-const matCristal = new THREE.MeshPhysicalMaterial({ 
-  color: 0xffffff, 
-  transparent: true, 
-  opacity: 1.0, 
-  roughness: 0.0, 
-  metalness: 0.1, 
-  transmission: 0.95, 
-  ior: 1.5, 
+const matCristal = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff,
+  transparent: true,
+  opacity: 1.0,
+  roughness: 0.0,
+  metalness: 0.1,
+  transmission: 0.95,
+  ior: 1.5,
   thickness: 0.2,
-  depthWrite: false 
+  depthWrite: false
 });
 
 const matToon = new THREE.MeshToonMaterial({ color: 0xff3366 });
-const matBasic = new THREE.MeshBasicMaterial({ color: 0x00129b, wireframe: true });
+
 const matPhong = new THREE.MeshPhongMaterial({ color: 0x888899, shininess: 80 });
 
-// ========== ESTRUCTURA KIOSCO ==========
-const piso = new THREE.Mesh(new THREE.BoxGeometry(8, 0.2, 6), matStandard);
+const matBasic = new THREE.MeshBasicMaterial({ color: 0x00129b, wireframe: true });
+
+function aplicarSombras(objeto, { proyecta = true, recibe = true } = {}) {
+  objeto.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = proyecta;
+      o.receiveShadow = recibe;
+    }
+  });
+}
+
+const piso = new THREE.Mesh(new THREE.BoxGeometry(8, 0.2, 6), matStandardPiso);
 piso.position.set(0, -2, 0);
-piso.receiveShadow = true; // Recibir sombras
+aplicarSombras(piso);
 scene.add(piso);
 
-// Pared trasera
 const paredTrasera = new THREE.Mesh(
-  new THREE.PlaneGeometry(8, 5), 
-  new THREE.MeshStandardMaterial({ color: 0xCDDC39, roughness: 0.5, metalness: 0.5, side: THREE.DoubleSide })
+  new THREE.PlaneGeometry(8, 5),
+  new THREE.MeshStandardMaterial({ color: 0xCDDC39, roughness: 0.6, metalness: 0.1, side: THREE.DoubleSide })
 );
 paredTrasera.position.set(0, 0.5, -3);
-paredTrasera.receiveShadow = true;
+aplicarSombras(paredTrasera);
 scene.add(paredTrasera);
 
 const marquesina = new THREE.Mesh(new THREE.BoxGeometry(8, 1.2, 6.2), matMetalNegro);
 marquesina.position.set(0, 3.1, 0);
+aplicarSombras(marquesina);
 scene.add(marquesina);
 
-// Columnas
 [[-3.9, 2.9], [3.9, 2.9], [-3.9, -2.9], [3.9, -2.9]].forEach(([x, z]) => {
   const col = new THREE.Mesh(new THREE.BoxGeometry(0.25, 5, 0.25), matMetalNegro);
   col.position.set(x, 0.5, z);
-  col.castShadow = true;
-  col.receiveShadow = true;
+  aplicarSombras(col);
   scene.add(col);
 });
 
 const cristalFrontal = new THREE.Mesh(new THREE.PlaneGeometry(7.6, 4.8), matCristal);
 cristalFrontal.position.set(0, 0.5, 2.95);
+aplicarSombras(cristalFrontal, { proyecta: CRISTAL_PROYECTA_SOMBRA, recibe: true });
 scene.add(cristalFrontal);
-
-// Marcos cristal frontal
-for (let i = -2.5; i <= 2.5; i += 1.25) {
-  const marco = new THREE.Mesh(new THREE.BoxGeometry(0.06, 4.8, 0.08), matMetalNegro);
-  marco.position.set(i, 0.5, 2.96);
-  scene.add(marco);
-}
 
 const cristalDerecho = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 4.8), matCristal);
 cristalDerecho.rotation.y = -Math.PI / 2;
 cristalDerecho.position.set(3.9, 0.5, 0);
+aplicarSombras(cristalDerecho, { proyecta: CRISTAL_PROYECTA_SOMBRA, recibe: true });
 scene.add(cristalDerecho);
 
-// ========== PODIOS ==========
+for (let i = -2.5; i <= 2.5; i += 1.25) {
+  const marco = new THREE.Mesh(new THREE.BoxGeometry(0.06, 4.8, 0.08), matMetalNegro);
+  marco.position.set(i, 0.5, 2.96);
+  aplicarSombras(marco);
+  scene.add(marco);
+}
+
 const datosPodios = [
-  { y: -1, mat: matBasic },   // Medio
-  { y: -1.4, mat: matToon }   // Abajo
+  { y: -1, mat: matBasic },
+  { y: -1.4, mat: matToon },
+  { y: -1.8, mat: matPhong }
 ];
 
 const podiosGenerados = datosPodios.map(p => {
   const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.4, 32), p.mat);
   mesh.position.set(0.7, p.y, -0.1);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
+  aplicarSombras(mesh);
   mesh.userData = { interactivo: true };
   scene.add(mesh);
   return mesh;
 });
 
-// ========== CARGADOR MODELOS ==========
 const loader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
@@ -151,7 +192,6 @@ loader.setDRACOLoader(dracoLoader);
 
 let zapatoGroup = null;
 
-// Logo Adidas
 loader.load('/3d_model/adidas_logo.glb', (gltf) => {
   const logo = gltf.scene;
   const box = new THREE.Box3().setFromObject(logo);
@@ -160,76 +200,59 @@ loader.load('/3d_model/adidas_logo.glb', (gltf) => {
   logo.position.sub(center);
   logo.scale.setScalar(2.2 / Math.max(size.x, 0.001));
   logo.position.set(0, 1, -2.85);
-  logo.rotation.set(Math.PI/2, 0, 0);
-  logo.traverse(c => {
-    if (c.isMesh) {
-      c.castShadow = true;
-    }
-  });
+  logo.rotation.set(Math.PI / 2, 0, 0);
+
+  aplicarSombras(logo);
   scene.add(logo);
 });
 
-// Maniquí
 loader.load('/3d_model/balenciaga_adidas_hoodie.glb', (gltf) => {
   const mani = gltf.scene;
   mani.scale.setScalar(2);
   mani.position.set(-1.5, -1.9, -0.5);
   mani.rotation.y = Math.PI / 6;
-  mani.traverse(c => {
-    if (c.isMesh) {
-      c.castShadow = true;
-      c.receiveShadow = true;
-      c.userData = { interactivo: true };
-    }
-  });
+
+  aplicarSombras(mani);
+  mani.userData = { interactivo: true };
   scene.add(mani);
 });
 
-// Zapato
 loader.load('/3d_model/shoes_adidas.glb', (gltf) => {
   const zapatoMesh = gltf.scene;
   const box = new THREE.Box3().setFromObject(zapatoMesh);
   zapatoMesh.position.sub(box.getCenter(new THREE.Vector3()));
-  
+
   zapatoGroup = new THREE.Group();
   zapatoGroup.add(zapatoMesh);
   zapatoGroup.scale.setScalar(5);
   zapatoGroup.position.set(0.8, 0.2, 0);
-  
-  zapatoGroup.traverse(c => {
-    if (c.isMesh) {
-      c.castShadow = true;
-      c.receiveShadow = true;
-      c.userData = { interactivo: true };
-    }
-  });
+
+  aplicarSombras(zapatoGroup);
+  zapatoGroup.userData = { interactivo: true };
   scene.add(zapatoGroup);
 });
 
-// ========== INTERACCIÓN Y RAYCASTER ==========
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 let targetRotationX = 0;
 let targetRotationY = 0;
 
-// Evento Mousemove (Hover)
 window.addEventListener('mousemove', (e) => {
   mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
-  targetRotationY = mouse.x * 0.5; 
-  targetRotationX = mouse.y * 0.3; 
+  targetRotationY = mouse.x * 0.5;
+  targetRotationX = mouse.y * 0.3;
 
   raycaster.setFromCamera(mouse, camera);
   const inter = raycaster.intersectObjects(scene.children, true).find(
     i => i.object.userData.interactivo || i.object.parent?.userData.interactivo
   );
-  
+
   document.body.style.cursor = inter ? 'pointer' : 'default';
 });
 
-// Evento Click (Detección por Raycaster para animación GSAP)
 window.addEventListener('click', () => {
   raycaster.setFromCamera(mouse, camera);
   const inter = raycaster.intersectObjects(scene.children, true).find(
@@ -237,31 +260,26 @@ window.addEventListener('click', () => {
   );
 
   if (inter && zapatoGroup) {
-    // Giro rápido de 360° con GSAP al hacer clic en un objeto interactivo
-    gsap.to(zapatoGroup.rotation, { 
-      y: zapatoGroup.rotation.y + Math.PI * 2, 
-      duration: 1, 
-      ease: 'power2.out' 
+    gsap.to(zapatoGroup.rotation, {
+      y: zapatoGroup.rotation.y + Math.PI * 2,
+      duration: 1,
+      ease: 'power2.out'
     });
   }
 });
 
-// Evento Teclado
 window.addEventListener('keydown', (e) => {
-  // Tecla Space: cambiar color de la pared
   if (e.code === 'Space') {
-    gsap.to(paredTrasera.material.color, { 
-      r: Math.random(), g: Math.random(), b: Math.random(), duration: 0.5 
+    gsap.to(paredTrasera.material.color, {
+      r: Math.random(), g: Math.random(), b: Math.random(), duration: 0.5
     });
   }
-  // Tecla R: reiniciar cámara
   if (e.key.toLowerCase() === 'r') {
     gsap.to(camera.position, { x: 0, y: 1.2, z: 7.5, duration: 1 });
     controles.target.set(0, 0.5, 0);
   }
 });
 
-// ========== LOOP ANIMACIÓN ==========
 const reloj = new THREE.Clock();
 
 window.addEventListener('resize', () => {
@@ -274,13 +292,9 @@ renderer.setAnimationLoop(() => {
   const t = reloj.getElapsedTime();
 
   if (zapatoGroup) {
-    // Flotación en Y
     zapatoGroup.position.y = 0.2 + Math.sin(t * 2) * 0.15;
+    zapatoGroup.rotation.y += 0.01;
 
-    // Rotación continua
-    zapatoGroup.rotation.y += 0.01; 
-
-    // Inclinación por cursor (LERP)
     zapatoGroup.rotation.x += (targetRotationX - zapatoGroup.rotation.x) * 0.05;
     zapatoGroup.rotation.z += (targetRotationY * 0.2 - zapatoGroup.rotation.z) * 0.05;
   }
